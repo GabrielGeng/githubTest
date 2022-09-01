@@ -1,0 +1,127 @@
+clear all;close all;
+%% Abtain freq information
+duration = 3;   % 3 seconds
+[temp,fs]= audioread([pwd,'\data_project\M16.wav']);
+%soundsc(temp(:,1),fs);
+frame = duration * fs;
+%temp =  upsample(temp,2);
+temp = 10*temp(1:frame,1);
+%soundsc(temp(:,1),fs);
+L = length(temp);
+nfft = L;
+t = (0:L-1)/fs;
+f = fs*(0:nfft/2)/nfft;
+figure
+plot(t,temp);
+Y = fft(temp/nfft);
+Y = 2*Y(1:nfft/2+1);
+figure
+plot(f,abs(Y));
+
+[temp_1,fs]= audioread([pwd,'\data_project\9mm.wav']);
+temp_1 = temp_1(1:frame,1);
+%soundsc(temp_1(:,1),fs);
+L = length(temp_1);
+nfft = L;
+t = (0:L-1)/fs;
+f = fs*(0:nfft/2)/nfft;
+figure
+plot(t,temp_1);
+Y = fft(temp_1/nfft);
+Y = 2*Y(1:nfft/2+1);
+figure
+plot(f,abs(Y));
+
+%% Array output
+nSensors = 4;
+senDist = 0.7;
+dx = senDist;
+dy = 0; 
+J = nSensors;
+my_array = arrays.ULA(J,dx,dy);
+disp('The four microphones are ready !');
+figure
+my_array.plot();  
+c = 340;                                % the sound speed 
+
+direction = [34,72];                         % row vector containing angles for which constraints hold
+target = [0,1];                         % row vector containing target values for the beampattern
+nb_f = 250;
+b = beamformer;
+set(b, 'array',         my_array);
+set(b, 'angles',        -180:1:180);
+set(b, 'n_sensor',      J);
+set(b, 'sound_speed',   c);
+set(b, 'nb_frequency',  nb_f); 
+steervector = array_response_vector(b,direction, nb_f);
+X = zeros(J,L);
+for i = 1:J
+    X(i,:)= temp*steervector(i,1)+temp_1*steervector(i,2);
+end
+%soundsc(abs(X(1,:)),fs);
+%% DOA
+n_source = 2;                                       % the number of sources
+[J,Frame] = size(X);
+f_c = 250;
+R_x = X*X'./Frame; 
+theta = -90:0.5:90;
+Index = linspace(0,J-1,J);
+v = [sin(theta*pi/180);-cos(theta*pi/180)];       % size 2*721
+p = [(-(J-1)/2 + Index.')*senDist,zeros(J,1)];             % size 6*2
+a_theta = exp(-1j*2*pi*f_c*(p*v)./c);             % steer vector(match weights) 6*721
+P_pm = diag(a_theta'*R_x*a_theta)./J;             % spatial power size 721*1
+[U ,eigval] = eig(R_x);                             % the columns of U is the corresponding eigenvectors
+                                                    % and eigval is a diagonal matrix of eigenvalues
+[eigval,index]  = sort(diag(eigval),1,'descend');   % eigval size is 6*1, the index in descend order
+U   = U(:,index);                                   % descend the eigenvectors
+Us  = U(:,1:n_source);                              % signal subspace
+Un  = U(:,n_source+1:J);                            % noise subspace 6*4
+P_sm = 1./diag(a_theta'*(Un*Un')*a_theta);          % pseudo power 721*1
+linspec = {'b-','LineWidth',2};
+%figure
+%plot(theta, 10*log10(abs(P_pm)), linspec{:});
+%xlim([-90,90]);
+figure
+plot(theta, 10*log10(abs(P_sm)), linspec{:});
+title('MUSIC pseudo power spectrum')
+xlabel('Angle in [degrees]');
+ylabel('Power spectrum in [dB]');
+xlim([-90,90]);
+
+%% Find the Global maximum and visualization
+[~,INDEX] = maxk(P_sm, n_source);
+doa = theta(INDEX);
+if abs(doa(1)) < abs(doa(2))
+    doa_source = doa(1);
+    interfer = doa(2);
+else
+    doa_source = doa(2);
+    interfer = doa(1);
+end
+disp(['The desired source DOA with MUSIC is: ',num2str(doa_source),' deg']);
+disp(['The interfering DOA with MUSIC is: ',num2str(interfer),' deg']);
+%% Null-steering
+%weights = steervector*(steervector'*steervector)^(-1)*target.';
+
+%b.beam_steering_nb(direction, target);
+%b.calc_nb_beampattern;
+
+% Use the plot function that belongs to the narrowband beamformer
+%figure;
+%b.plot_nb([],direction, {'k-.','LineWidth',2});
+
+
+%Null_steer_out = X.*weights;
+%soundsc(abs(Null_steer_out(1,:)),fs);
+comp_vector = steervector(:,1)';
+compensate = X.*(comp_vector.');
+Bl
+align_out= compensate(3,:)-compensate(4,:);
+soundsc(abs(align_out(1,:)),fs);
+
+ 
+
+
+
+
+
